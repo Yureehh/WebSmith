@@ -1,0 +1,15 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix coa: <https://example.com/company-ontology-agent#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+coa:AssertionShape a sh:NodeShape ;
+  sh:targetClass coa:Assertion ;
+  sh:property [ sh:path coa:predicate ; sh:minCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path coa:confidence ; sh:minCount 1 ; sh:datatype xsd:decimal ; sh:minInclusive 0 ; sh:maxInclusive 1 ] ;
+  sh:property [ sh:path coa:status ; sh:minCount 1 ; sh:in ("candidate" "validated" "rejected" "superseded" "disputed") ] ;
+  sh:property [ sh:path coa:evidenceSpanId ; sh:minCount 1 ; sh:datatype xsd:string ] .
+
+coa:EntityShape a sh:NodeShape ;
+  sh:targetClass coa:Entity ;
+  sh:property [ sh:path coa:name ; sh:minCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path coa:entityType ; sh:minCount 1 ; sh:datatype xsd:string ] .

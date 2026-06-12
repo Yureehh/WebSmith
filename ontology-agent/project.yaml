@@ -1,0 +1,59 @@
+project_slug: ontology-agent
+project_name: Ontology Agent Ontology
+environment: local
+runtime:
+  backend: local
+  metadata_store: sqlite
+  raw_store: local_filesystem
+graph:
+  backend: neo4j
+  uri: bolt://localhost:7687
+  uri_env: NEO4J_URI
+  database: neo4j
+  database_env: NEO4J_DATABASE
+  username_env: NEO4J_USER
+  password_env: NEO4J_PASSWORD
+  vector_index_name: chunk_embeddings
+  write_visual_relationships: true
+graphify:
+  enabled: true
+  input_path: ./data/raw
+  output_path: ./graphify-out
+  backend: openai
+  mode: deep
+  update: true
+  no_viz: true
+  export_neo4j_cypher: true
+  push_to_neo4j: false
+  strict: false
+llm:
+  provider: openai
+  model_env: ONTOLOGY_AGENT_LLM_MODEL
+  api_key_env: OPENAI_API_KEY
+  extraction_mode: strict_json_schema
+embedding:
+  provider: openai
+  model_env: ONTOLOGY_AGENT_EMBEDDING_MODEL
+  dimension: 3072
+ontology:
+  version: 0.1.0
+  core_path: ./ontology/core.ttl
+  shapes_path: ./ontology/shapes.ttl
+  mappings_path: ./ontology/mappings.yaml
+  validation_mode: strict
+wiki:
+  enabled: true
+  output_path: ./wiki
+  format: markdown
+  include_frontmatter: true
+sources:
+- name: local_docs
+  type: folder
+  path: ./data/raw
+  enabled: true
+privacy:
+  pii_mode: basic_redaction
+  classification_default: internal
+sync:
+  incremental: true
+  idempotency: true
