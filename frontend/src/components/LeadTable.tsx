@@ -1,6 +1,7 @@
 import { ChevronRight, CircleDot, Inbox, Mail, Sparkles } from "lucide-react";
 
 import type { Business } from "../lib/types";
+import { formatMarketType, prettyStatus, statusToneFor } from "../lib/statusTones";
 
 type Props = {
   businesses: Business[];
@@ -8,25 +9,6 @@ type Props = {
   selectedId: number | null;
   onSelect: (id: number) => void;
 };
-
-const statusTone: Record<string, string> = {
-  discovered: "bg-ink/5 text-ink/65",
-  enriched: "bg-moss/10 text-moss",
-  draft_ready: "bg-copper/10 text-copper",
-  externally_imported: "bg-copper/10 text-copper",
-  email_drafted: "bg-moss/10 text-moss",
-  contacted: "bg-ink text-white",
-  replied: "bg-moss text-white",
-  follow_up_needed: "bg-copper text-white",
-  won: "bg-moss text-white",
-  lost: "bg-ink/70 text-white",
-  do_not_contact: "bg-copper text-white",
-  archived: "bg-ink/20 text-ink/70"
-};
-
-function prettyStatus(status: string) {
-  return status.replaceAll("_", " ");
-}
 
 function nextCue(status: string) {
   if (status === "discovered") return "Enrich next";
@@ -41,13 +23,6 @@ function nextCue(status: string) {
 
 function hasContact(business: Business) {
   return Boolean(business.phone || business.email || business.contacts.length > 0);
-}
-
-function formatMarketType(marketType: string) {
-  if (marketType === "b2c") return "B2C";
-  if (marketType === "b2b") return "B2B";
-  if (marketType === "both") return "B2C + B2B";
-  return "Unknown";
 }
 
 export function LeadTable({ businesses, emptyMode = "active", selectedId, onSelect }: Props) {
@@ -113,9 +88,8 @@ export function LeadTable({ businesses, emptyMode = "active", selectedId, onSele
                 </span>
                 <span className="mt-2 flex flex-wrap gap-1.5">
                   <span
-                    className={`rounded-md px-2 py-1 text-[11px] font-black capitalize ${
-                      statusTone[status] ?? "bg-cloud text-ink/70"
-                    }`}
+                    className={`rounded-md px-2 py-1 text-[11px] font-black capitalize ${statusToneFor(status)}`}
+                    title={`Status: ${prettyStatus(status)}`}
                   >
                     {prettyStatus(status)}
                   </span>

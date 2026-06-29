@@ -2,6 +2,7 @@ import L from "leaflet";
 import { useEffect, useRef } from "react";
 
 import type { Business, SearchRun } from "../lib/types";
+import { formatMarketType, marketColorHex } from "../lib/statusTones";
 
 type Props = {
   businesses: Business[];
@@ -9,20 +10,6 @@ type Props = {
   selectedId: number | null;
   onSelect: (id: number) => void;
 };
-
-const markerColorByMarket: Record<string, string> = {
-  b2c: "#0f766e",
-  both: "#0891b2",
-  b2b: "#2563eb",
-  unknown: "#6b7280"
-};
-
-function formatMarketType(marketType: string) {
-  if (marketType === "b2c") return "B2C";
-  if (marketType === "b2b") return "B2B";
-  if (marketType === "both") return "B2C + B2B";
-  return "Unknown";
-}
 
 export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props) {
   const mapRef = useRef<L.Map | null>(null);
@@ -32,7 +19,7 @@ export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props)
 
   useEffect(() => {
     if (!hostRef.current || mapRef.current) return;
-    mapRef.current = L.map(hostRef.current).setView([45.4642, 9.19], 12);
+    mapRef.current = L.map(hostRef.current).setView([44.2227, 12.0407], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap"
     }).addTo(mapRef.current);
@@ -80,7 +67,7 @@ export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props)
         radius: isSelected ? 10 : 7,
         color: isSelected ? "#111827" : "#ffffff",
         weight: isSelected ? 3 : 2,
-        fillColor: markerColorByMarket[market] ?? markerColorByMarket.unknown,
+        fillColor: marketColorHex[market] ?? marketColorHex.unknown,
         fillOpacity: 0.92
       })
         .bindPopup(
@@ -120,10 +107,20 @@ export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props)
   return (
     <div className="relative h-full min-h-[500px] overflow-hidden rounded-lg border border-white/70 shadow-[0_16px_50px_rgb(24_32_31/0.08)]">
       <div className="absolute right-3 top-3 z-[500] flex gap-2">
-        <button className="rounded-md bg-white/95 px-3 py-2 text-xs font-black text-ink shadow" onClick={fitResults} type="button">
+        <button
+          className="rounded-md bg-white/95 px-3 py-2 text-xs font-black text-ink shadow transition hover:bg-white"
+          onClick={fitResults}
+          type="button"
+          aria-label="Zoom the map to fit all result markers"
+        >
           Fit results
         </button>
-        <button className="rounded-md bg-white/95 px-3 py-2 text-xs font-black text-ink shadow" onClick={fitSearchArea} type="button">
+        <button
+          className="rounded-md bg-white/95 px-3 py-2 text-xs font-black text-ink shadow transition hover:bg-white"
+          onClick={fitSearchArea}
+          type="button"
+          aria-label="Zoom the map to fit the searched area"
+        >
           Fit area
         </button>
       </div>

@@ -8,12 +8,20 @@ import {
 } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Toaster } from "react-hot-toast";
 
 import { Home } from "./routes/Home";
 import { Settings } from "./routes/Settings";
 import "./styles/index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false
+    }
+  }
+});
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -38,6 +46,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: { fontWeight: 600, fontSize: "0.875rem" },
+          success: { iconTheme: { primary: "#0f766e", secondary: "#fff" } },
+          error: { duration: 6000, iconTheme: { primary: "#e0523f", secondary: "#fff" } }
+        }}
+      />
     </QueryClientProvider>
   </React.StrictMode>
 );

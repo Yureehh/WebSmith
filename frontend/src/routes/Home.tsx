@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Compass } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import toast from "react-hot-toast";
 import { z } from "zod";
 
 import { CockpitMetrics } from "../components/CockpitMetrics";
@@ -23,9 +24,12 @@ import {
 import type { SearchRun } from "../lib/types";
 
 const searchSchema = z.object({
-  location_query: z.string().min(2),
+  location_query: z.string().min(2, "Enter a location to search (city, street, or landmark)."),
   name_query: z.string().optional(),
-  radius_km: z.coerce.number().min(0).max(50),
+  radius_km: z.coerce
+    .number()
+    .min(0, "Radius cannot be negative.")
+    .max(50, "Radius must be 50 km or less."),
   search_depth: z.enum(["fast", "balanced", "deep"])
 });
 
@@ -59,7 +63,7 @@ export function Home() {
   const businessesQuery = useQuery({ queryKey: ["businesses"], queryFn: api.businesses });
   const { register, handleSubmit, watch } = useForm<SearchForm>({
     defaultValues: {
-      location_query: "Forlì",
+      location_query: "",
       name_query: "",
       radius_km: 3,
       search_depth: "balanced"
@@ -73,8 +77,29 @@ export function Home() {
       setCurrentSearchIds(data.businesses.map((business) => business.id));
       setCurrentSearchRun(data.search_run);
       setLeadView("new");
+      const found = data.businesses.length;
+      toast.success(
+        found > 0
+          ? `Found ${found} ${found === 1 ? "business" : "businesses"} in this area.`
+          : "Search complete — no new businesses in this area."
+      );
+    },
+    onError: (error) => {
+      const message = (error as Error).message;
+      toast.error(
+        message.includes("not reachable") || message.includes("not running")
+          ? "Backend is not running. Start it with `make dev-backend`, then retry."
+          : message || "Search failed. Please try again."
+      );
     }
   });
+
+  const clearFilters = () => {
+    setIncludedActivities([]);
+    setExcludedActivities(defaultExcludedActivities);
+    setIncludeInput("");
+    setExcludeInput("");
+  };
   const businesses = useMemo(() => businessesQuery.data ?? [], [businessesQuery.data]);
   const currentSearchIdSet = useMemo(
     () => (currentSearchIds ? new Set(currentSearchIds) : null),
@@ -155,7 +180,12 @@ export function Home() {
     addUniqueNormalized(activity, setLeadActivityFilters, () => setLeadActivityInput(""));
   };
   const onSubmit = (values: SearchForm) => {
-    const parsed = searchSchema.parse(values);
+    const result = searchSchema.safeParse(values);
+    if (!result.success) {
+      toast.error(result.error.issues[0]?.message ?? "Please check the search fields.");
+      return;
+    }
+    const parsed = result.data;
     searchMutation.mutate({
       ...parsed,
       name_query: parsed.name_query?.trim() || undefined,
@@ -200,6 +230,7 @@ export function Home() {
             includeInput={includeInput}
             includedActivities={includedActivities}
             isSearching={searchMutation.isPending}
+            onClearFilters={clearFilters}
             onSubmit={onSubmit}
             radiusValue={radiusValue}
             register={register}

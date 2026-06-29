@@ -1,4 +1,4 @@
-import { FilterX, ListFilter, MapPin, Search, SlidersHorizontal, Target } from "lucide-react";
+import { FilterX, Gauge, ListFilter, MapPin, Search, SlidersHorizontal, Target } from "lucide-react";
 import type { UseFormHandleSubmit, UseFormRegister } from "react-hook-form";
 
 import { activityOptions } from "../lib/activityOptions";
@@ -24,6 +24,7 @@ type Props = {
   register: UseFormRegister<SearchFormValues>;
   addExcluded: (activity: string) => void;
   addIncluded: (activity: string) => void;
+  onClearFilters: () => void;
   onSubmit: (values: SearchFormValues) => void;
   removeExcluded: (activity: string) => void;
   removeIncluded: (activity: string) => void;
@@ -41,6 +42,7 @@ export function SearchControls({
   includeInput,
   includedActivities,
   isSearching,
+  onClearFilters,
   onSubmit,
   radiusValue,
   register,
@@ -50,6 +52,8 @@ export function SearchControls({
   setExcludeInput,
   setIncludeInput
 }: Props) {
+  const hasFilters =
+    includedActivities.length > 0 || excludeInput.length > 0 || includeInput.length > 0;
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
@@ -63,16 +67,13 @@ export function SearchControls({
           <div className="rounded-md bg-moss/10 px-3 py-2 text-xs font-black text-moss">
             OSM / Overpass discovery
           </div>
-          <div className="rounded-md bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-700">
-            Balanced coverage
-          </div>
           <div className="rounded-md bg-ink/5 px-3 py-2 text-xs font-black text-ink/60">
             {activeCount} active
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(280px,1.4fr)_minmax(210px,0.9fr)_140px]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(240px,1.4fr)_minmax(170px,0.9fr)_120px_minmax(160px,0.9fr)]">
         <label className="grid gap-1.5 text-sm font-medium text-ink">
           <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-ink/65">
             <MapPin size={14} /> Location
@@ -111,9 +112,23 @@ export function SearchControls({
           </div>
         </label>
 
-        <div className="grid content-end lg:col-span-3">
+        <label className="grid gap-1.5 text-sm font-medium text-ink">
+          <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-ink/65">
+            <Gauge size={14} /> Depth
+          </span>
+          <select
+            className="min-h-12 rounded-md border border-ink/12 bg-white px-3 py-2 text-base font-semibold outline-none transition focus:border-moss focus:ring-4 focus:ring-moss/12"
+            {...register("search_depth")}
+          >
+            <option value="fast">Fast — quick scan</option>
+            <option value="balanced">Balanced — recommended</option>
+            <option value="deep">Deep — exhaustive</option>
+          </select>
+        </label>
+
+        <div className="grid content-end lg:col-span-4">
           <Button className="min-h-12 w-full px-6 text-base" variant="primary" disabled={isSearching}>
-            <Search size={16} /> {isSearching ? "Searching" : "Search"}
+            <Search size={16} /> {isSearching ? "Searching…" : "Search"}
           </Button>
         </div>
       </div>
@@ -125,6 +140,7 @@ export function SearchControls({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <input
+              aria-label="Add an activity type to include in the search"
               className="min-h-10 flex-1 rounded-md border border-ink/12 bg-white px-3 text-sm outline-none focus:border-moss focus:ring-4 focus:ring-moss/12"
               list="activity-options"
               onBlur={() => addIncluded(includeInput)}
@@ -147,12 +163,13 @@ export function SearchControls({
           <div className="mt-2 flex flex-wrap gap-2">
             {includedActivities.map((activity) => (
               <button
-                className="rounded-md bg-moss px-2.5 py-1.5 text-xs font-black text-white"
+                aria-label={`Remove included type ${activity}`}
+                className="rounded-md bg-moss px-2.5 py-1.5 text-xs font-black text-white transition hover:bg-moss/85"
                 key={activity}
                 onClick={() => removeIncluded(activity)}
                 type="button"
               >
-                {activity} x
+                {activity} <span aria-hidden="true">×</span>
               </button>
             ))}
           </div>
@@ -164,6 +181,7 @@ export function SearchControls({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <input
+              aria-label="Add an activity type to exclude from the search"
               className="min-h-10 flex-1 rounded-md border border-ink/12 bg-white px-3 text-sm outline-none focus:border-copper focus:ring-4 focus:ring-copper/12"
               list="activity-options"
               onBlur={() => addExcluded(excludeInput)}
@@ -181,19 +199,28 @@ export function SearchControls({
           <div className="mt-2 flex max-h-28 flex-wrap gap-2 overflow-auto rounded-md pr-1">
             {excludedActivities.map((activity) => (
               <button
-                className="rounded-md bg-copper px-2.5 py-1.5 text-xs font-black text-white"
+                aria-label={`Remove excluded type ${activity}`}
+                className="rounded-md bg-copper px-2.5 py-1.5 text-xs font-black text-white transition hover:bg-copper/85"
                 key={activity}
                 onClick={() => removeExcluded(activity)}
                 type="button"
               >
-                {activity} x
+                {activity} <span aria-hidden="true">×</span>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end text-xs">
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+        <button
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-bold text-ink/55 transition enabled:hover:bg-ink/5 enabled:hover:text-ink disabled:opacity-40"
+          disabled={!hasFilters}
+          onClick={onClearFilters}
+          type="button"
+        >
+          <FilterX size={13} /> Clear filters
+        </button>
         <span className="text-ink/45">Current radius: {radiusValue || 0} km</span>
       </div>
       {searchError ? (

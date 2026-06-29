@@ -14,6 +14,7 @@ import {
   XCircle
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import toast from "react-hot-toast";
 
 import { api } from "../lib/api";
 import type { Business, JobResult } from "../lib/types";
@@ -209,7 +210,6 @@ function isJobResult(data: unknown): data is JobResult {
 
 export function LeadActions({ business }: { business: Business }) {
   const queryClient = useQueryClient();
-  const [lastResult, setLastResult] = useState<string | null>(null);
   const [replyModal, setReplyModal] = useState<"reply-draft" | "reply-log" | null>(null);
   const [replyText, setReplyText] = useState("");
   const [importModal, setImportModal] = useState(false);
@@ -270,14 +270,22 @@ export function LeadActions({ business }: { business: Business }) {
     onSuccess: async (data, variables) => {
       const action = variables.action;
       if (isJobResult(data) && data.result_json?.repo_path) {
-        setLastResult(`Workspace ready: ${String(data.result_json.repo_path)}`);
+        toast.success(`Workspace ready: ${String(data.result_json.repo_path)}`);
       } else if (isJobResult(data) && data.result_json?.status) {
-        setLastResult(`${action.label} completed: ${String(data.result_json.status)}.`);
+        toast.success(`${action.label} completed: ${String(data.result_json.status)}.`);
       } else {
-        setLastResult(`${action.label} completed.`);
+        toast.success(`${action.label} completed.`);
       }
       await queryClient.invalidateQueries({ queryKey: ["businesses"] });
       await queryClient.invalidateQueries({ queryKey: ["business", business.id] });
+    },
+    onError: (error) => {
+      const message = (error as Error).message;
+      toast.error(
+        message.includes("not reachable")
+          ? "Backend is not running. Start it with `make dev-backend`, then retry."
+          : message || "Action failed. Please try again."
+      );
     }
   });
   const runningActionLabel = mutation.variables?.action.label;
@@ -373,19 +381,22 @@ export function LeadActions({ business }: { business: Business }) {
         </div>
       ) : null}
 
-      {lastResult ? <p className="rounded-md bg-moss/10 p-2 text-xs font-semibold text-moss">{lastResult}</p> : null}
-      {mutation.error ? (
-        <p className="rounded-md bg-copper/10 p-2 text-xs text-copper">
-          {(mutation.error as Error).message.includes("not reachable")
-            ? "Backend is not running. Start it with `make dev-backend`, then retry."
-            : (mutation.error as Error).message}
-        </p>
-      ) : null}
-
       {mutation.isPending ? (
-        <div className="fixed inset-0 z-[1000] grid place-items-center bg-ink/30 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-white/70 bg-white p-5 text-center shadow-[0_24px_80px_rgb(15_23_42/0.22)]">
-            <div className="mx-auto mb-4 size-10 animate-spin rounded-full border-4 border-cyan-100 border-t-moss" />
+        <div
+          className="fixed inset-0 z-[1000] grid place-items-center bg-ink/30 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-busy="true"
+          aria-label={`${runningActionLabel ?? "Working"} in progress`}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-white/70 bg-white p-5 text-center shadow-[0_24px_80px_rgb(15_23_42/0.22)]"
+            aria-live="polite"
+          >
+            <div
+              className="mx-auto mb-4 size-10 animate-spin rounded-full border-4 border-cyan-100 border-t-moss"
+              aria-hidden="true"
+            />
             <p className="text-lg font-black text-ink">{runningActionLabel ?? "Working"}</p>
             <p className="mt-2 text-sm leading-relaxed text-ink/60">
               {runningActionLabel === "Enrich" || runningActionLabel === "Enrich again"
@@ -397,11 +408,20 @@ export function LeadActions({ business }: { business: Business }) {
       ) : null}
 
       {replyModal ? (
-        <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]">
+        <div
+          className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]"
+          role="group"
+          aria-label={replyModal === "reply-draft" ? "Paste answer and draft reply" : "Log received answer"}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setReplyModal(null);
+          }}
+        >
           <p className="text-sm font-black text-ink">
             {replyModal === "reply-draft" ? "Paste answer + draft reply" : "I received answer"}
           </p>
           <textarea
+            autoFocus
+            aria-label="Client answer text"
             className="mt-2 min-h-28 w-full resize-y rounded-md border border-ink/15 p-3 text-sm outline-none focus:border-moss focus:ring-4 focus:ring-moss/12"
             onChange={(event) => setReplyText(event.target.value)}
             placeholder="Paste the latest client answer here..."
@@ -419,12 +439,21 @@ export function LeadActions({ business }: { business: Business }) {
       ) : null}
 
       {importModal ? (
-        <div className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]">
+        <div
+          className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]"
+          role="group"
+          aria-label="Import website"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setImportModal(false);
+          }}
+        >
           <p className="text-sm font-black text-ink">Import website</p>
           <p className="mt-1 text-xs text-ink/60">
             Paste a local `site/` folder, zip path, or preview URL.
           </p>
           <input
+            autoFocus
+            aria-label="Website path or URL"
             className="mt-2 min-h-11 w-full rounded-md border border-ink/15 px-3 text-sm outline-none focus:border-moss focus:ring-4 focus:ring-moss/12"
             onChange={(event) => setImportPath(event.target.value)}
             placeholder="/Users/.../website-projects/12-name/site"
