@@ -16,7 +16,13 @@ from app.models.entities import (
     SearchRun,
     SourceDocument,
 )
-from app.providers.ai import ai_configured, complete_json, complete_text, web_search_json
+from app.providers.ai import (
+    ai_configured,
+    complete_json,
+    complete_text,
+    require_ai,
+    web_search_json,
+)
 from app.providers.discovery import (
     DEFAULT_EXCLUDED_CATEGORIES,
     DiscoveredBusiness,
@@ -290,6 +296,49 @@ def ensure_profile(db: Session, business: Business) -> LeadProfile:
     return profile
 
 
+def upsert_contact(
+    db: Session,
+    business_id: int,
+    *,
+    email: str | None,
+    phone: str | None,
+    source_url: str | None,
+    contact_type: str,
+    confidence: str,
+) -> None:
+    """Add a contact, or enrich the existing one, respecting the (business_id, email) unique index.
+
+    Re-running discovery/enrichment must never create duplicates or hit an IntegrityError.
+    """
+    if not email and not phone:
+        return
+    query = select(Contact).where(Contact.business_id == business_id)
+    if email:
+        existing = db.execute(query.where(Contact.email == email)).scalars().first()
+    else:
+        existing = (
+            db.execute(query.where(Contact.email.is_(None), Contact.phone == phone))
+            .scalars()
+            .first()
+        )
+    if existing is not None:
+        existing.phone = existing.phone or phone
+        existing.source_url = existing.source_url or source_url
+        if confidence == "medium":
+            existing.confidence = "medium"
+        return
+    db.add(
+        Contact(
+            business_id=business_id,
+            email=email,
+            phone=phone,
+            source_url=source_url,
+            contact_type=contact_type,
+            confidence=confidence,
+        )
+    )
+
+
 def add_event(
     db: Session,
     business_id: int,
@@ -445,17 +494,15 @@ async def create_search_run(
         )
         db.add(profile)
         existing.lead_profile = profile
-        if existing.email or existing.phone:
-            db.add(
-                Contact(
-                    business_id=existing.id,
-                    email=existing.email,
-                    phone=existing.phone,
-                    source_url=item.website_url,
-                    contact_type="generic_business",
-                    confidence="medium" if item.discovery_source == "web_search" else "low",
-                )
-            )
+        upsert_contact(
+            db,
+            existing.id,
+            email=existing.email,
+            phone=existing.phone,
+            source_url=item.website_url,
+            contact_type="generic_business",
+            confidence="medium" if item.discovery_source == "web_search" else "low",
+        )
         add_event(db, existing.id, "data_collected", "Business discovered via provider search.")
         web_source_document = getattr(item, "web_source_document", None)
         if web_source_document:
@@ -582,17 +629,15 @@ def enrich_business(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
         business.email = emails[0]
     if phones and not business.phone:
         business.phone = phones[0]
-    if business.email or business.phone:
-        db.add(
-            Contact(
-                business_id=business.id,
-                email=business.email,
-                phone=business.phone,
-                source_url=site["source_url"],
-                contact_type="generic_business",
-                confidence="medium",
-            )
-        )
+    upsert_contact(
+        db,
+        business.id,
+        email=business.email,
+        phone=business.phone,
+        source_url=site["source_url"],
+        contact_type="generic_business",
+        confidence="medium",
+    )
     profile.status = "enriched"
     profile.opportunity_summary = as_text(summary.get("opportunity_summary"))
     profile.mission_summary = as_text(summary.get("mission_summary"))
@@ -613,6 +658,11 @@ def draft_outreach(
     profile = ensure_profile(db, business)
     if profile.status == "do_not_contact" or profile.do_not_contact_reason:
         raise HTTPException(status_code=409, detail="Lead is marked do not contact.")
+    if contact_id is not None:
+        contact = db.get(Contact, contact_id)
+        if contact is None or contact.business_id != business.id:
+            raise HTTPException(status_code=404, detail="Contact not found for this lead.")
+    require_ai()
     subject = (
         f"Una presenza online piu chiara per {business.name}"
         if language == "it"

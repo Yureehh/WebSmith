@@ -1,7 +1,16 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON as SAJSON
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -20,6 +29,7 @@ class TimestampMixin:
 
 class SearchRun(TimestampMixin, Base):
     __tablename__ = "search_runs"
+    __table_args__ = (Index("ix_search_runs_created_at", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     location_query: Mapped[str] = mapped_column(String(255))
@@ -90,7 +100,7 @@ class SourceDocument(Base):
     __tablename__ = "source_documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
     source_type: Mapped[str] = mapped_column(String(60))
     source_url: Mapped[str | None] = mapped_column(String(800))
     title: Mapped[str | None] = mapped_column(String(255))
@@ -104,9 +114,14 @@ class SourceDocument(Base):
 
 class Contact(Base):
     __tablename__ = "contacts"
+    # Unique index (not a table constraint) so SQLite can add it without a table rebuild.
+    # NULL emails are treated as distinct by SQLite, so phone-only contacts never collide.
+    __table_args__ = (
+        Index("uq_contacts_business_email", "business_id", "email", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
     name: Mapped[str | None] = mapped_column(String(255))
     role: Mapped[str | None] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255))
@@ -127,7 +142,7 @@ class WebsiteProject(TimestampMixin, Base):
     __tablename__ = "website_projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
     status: Mapped[str] = mapped_column(String(60), default="draft_ready")
     generation_mode: Mapped[str] = mapped_column(String(40), default="internal")
     project_name: Mapped[str] = mapped_column(String(255))
@@ -143,8 +158,8 @@ class OutreachMessage(TimestampMixin, Base):
     __tablename__ = "outreach_messages"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
-    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
     message_type: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(40), default="draft")
     subject: Mapped[str | None] = mapped_column(String(255))
@@ -157,7 +172,7 @@ class Conversation(TimestampMixin, Base):
     __tablename__ = "conversations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(40), default="active")
 
@@ -166,7 +181,7 @@ class ConversationMessage(Base):
     __tablename__ = "conversation_messages"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"))
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True)
     direction: Mapped[str] = mapped_column(String(20))
     body: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(40), default="manual_paste")
@@ -177,8 +192,8 @@ class ComplianceEvent(Base):
     __tablename__ = "compliance_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"))
-    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"))
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(60))
     data_source_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -198,7 +213,7 @@ class Job(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     type: Mapped[str] = mapped_column(String(80))
-    status: Mapped[str] = mapped_column(String(40), default="queued")
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
     payload_json: Mapped[dict] = mapped_column(SAJSON, default=dict)
     result_json: Mapped[dict | None] = mapped_column(SAJSON)
     error: Mapped[str | None] = mapped_column(Text)

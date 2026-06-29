@@ -1,10 +1,14 @@
+import logging
 from dataclasses import dataclass
 from math import cos, radians
 from re import escape
 
 import httpx
+from fastapi import HTTPException
 
 from app.core.config import settings
+
+logger = logging.getLogger("websmith.discovery")
 
 
 @dataclass
@@ -326,9 +330,18 @@ async def geocode_location(location_query: str) -> tuple[float, float]:
             data = response.json()
             if data:
                 return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception:
-        pass
-    return ITALIAN_FALLBACK_COORDS["milano"]
+    except Exception as exc:
+        logger.warning("Geocoding failed for %r: %s", location_query, exc)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not reach the geocoding service for “{location_query}”. Try again.",
+        ) from exc
+    # Reached only when Nominatim responded but found nothing — don't silently use a wrong city.
+    logger.info("No geocoding match for %r", location_query)
+    raise HTTPException(
+        status_code=422,
+        detail=f"Could not locate “{location_query}”. Use a more specific Italian town/city name.",
+    )
 
 
 async def discover_osm(

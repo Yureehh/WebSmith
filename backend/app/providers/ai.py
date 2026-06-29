@@ -1,10 +1,18 @@
 import json
+import logging
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
+
+logger = logging.getLogger("websmith.ai")
+
+
+def _log_model_failure(model: str, exc: Exception) -> None:
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    logger.warning("AI model %s failed%s: %s", model, f" (HTTP {status})" if status else "", exc)
 
 
 def ai_configured() -> bool:
@@ -44,6 +52,7 @@ def complete_text(system: str, user: str) -> str:
                 content = response.json()["choices"][0]["message"]["content"]
                 return content.strip()
             except Exception as exc:
+                _log_model_failure(model, exc)
                 errors.append(f"{model}: {exc}")
     raise HTTPException(status_code=502, detail=f"AI provider request failed: {' | '.join(errors)}")
 
@@ -152,6 +161,7 @@ def web_search_json(query: str, required_keys: set[str] | None = None) -> dict[s
                     parsed["_sources"] = extract_web_sources(output)
                     return parsed
             except Exception as exc:
+                _log_model_failure(model, exc)
                 errors.append(f"{model}: {exc}")
     raise HTTPException(
         status_code=502,
