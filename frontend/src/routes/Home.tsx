@@ -63,7 +63,7 @@ export function Home() {
   const businessesQuery = useQuery({ queryKey: ["businesses"], queryFn: api.businesses });
   const { register, handleSubmit, watch } = useForm<SearchForm>({
     defaultValues: {
-      location_query: "",
+      location_query: "Forlì",
       name_query: "",
       radius_km: 3,
       search_depth: "balanced"
