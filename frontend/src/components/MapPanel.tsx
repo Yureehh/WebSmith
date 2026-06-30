@@ -1,4 +1,7 @@
 import L from "leaflet";
+import "leaflet.markercluster";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { useEffect, useRef } from "react";
 
 import type { Business, SearchRun } from "../lib/types";
@@ -14,8 +17,9 @@ type Props = {
 export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props) {
   const mapRef = useRef<L.Map | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
+  const layerRef = useRef<L.MarkerClusterGroup | null>(null);
   const coverageRef = useRef<L.LayerGroup | null>(null);
+  const lastPointsKeyRef = useRef<string>("");
 
   useEffect(() => {
     if (!hostRef.current || mapRef.current) return;
@@ -23,7 +27,12 @@ export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props)
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap"
     }).addTo(mapRef.current);
-    layerRef.current = L.layerGroup().addTo(mapRef.current);
+    layerRef.current = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 48,
+      chunkedLoading: true,
+      spiderfyOnMaxZoom: true
+    }).addTo(mapRef.current);
     coverageRef.current = L.layerGroup().addTo(mapRef.current);
   }, []);
 
@@ -60,24 +69,39 @@ export function MapPanel({ businesses, searchRun, selectedId, onSelect }: Props)
         .addTo(coverage);
     });
     const points = businesses.filter((business) => business.lat && business.lng);
+    let selectedMarker: L.Marker | null = null;
     points.forEach((business) => {
       const isSelected = business.id === selectedId;
       const market = business.lead_profile?.market_type ?? "unknown";
-      const marker = L.circleMarker([business.lat as number, business.lng as number], {
-        radius: isSelected ? 10 : 7,
-        color: isSelected ? "#111827" : "#ffffff",
-        weight: isSelected ? 3 : 2,
-        fillColor: marketColorHex[market] ?? marketColorHex.unknown,
-        fillOpacity: 0.92
+      const fill = marketColorHex[market] ?? marketColorHex.unknown;
+      const size = isSelected ? 20 : 16;
+      const icon = L.divIcon({
+        className: "websmith-marker",
+        html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${
+          isSelected ? "3px solid #111827" : "2px solid #ffffff"
+        };box-shadow:0 0 0 1px rgba(15,23,42,0.25),0 2px 6px rgba(15,23,42,0.3);"></span>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -size / 2]
+      });
+      const marker = L.marker([business.lat as number, business.lng as number], {
+        icon,
+        zIndexOffset: isSelected ? 1000 : 0
       })
         .bindPopup(
           `<strong>${business.name}</strong><br />${business.primary_category ?? "unknown"} · ${formatMarketType(market)}<br />${business.website_url ? "Website found" : "No website"} · ${business.phone || business.email ? "Contact found" : "No contact"}`
         )
         .on("click", () => onSelect(business.id));
-      marker.addTo(layer);
-      if (isSelected) marker.openPopup();
+      layer.addLayer(marker);
+      if (isSelected) selectedMarker = marker;
     });
-    if (points.length > 0) {
+    const pointsKey = points.map((business) => business.id).join(",");
+    const pointsChanged = pointsKey !== lastPointsKeyRef.current;
+    lastPointsKeyRef.current = pointsKey;
+    if (selectedMarker) {
+      const target = selectedMarker as L.Marker;
+      layer.zoomToShowLayer(target, () => target.openPopup());
+    } else if (pointsChanged && points.length > 0) {
       map.fitBounds(points.map((business) => [business.lat, business.lng] as [number, number]), {
         padding: [24, 24],
         maxZoom: 14

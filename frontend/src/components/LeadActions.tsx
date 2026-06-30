@@ -1,212 +1,21 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Archive,
-  Ban,
-  CalendarClock,
-  CheckCircle2,
-  Download,
-  MailCheck,
-  MailPlus,
-  MessageSquareReply,
-  Sparkles,
-  Trophy,
-  Upload,
-  XCircle
-} from "lucide-react";
+import { CheckCircle2, MessageSquareReply, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 import { api } from "../lib/api";
-import type { Business, JobResult } from "../lib/types";
+import {
+  buildCloseActions,
+  buildPrimaryActions,
+  buildSecondaryActions,
+  isJobResult,
+  type LeadAction,
+  nextStepCopy,
+  readableStatus
+} from "../lib/leadActions";
+import type { Business } from "../lib/types";
 import { Button } from "./Button";
-
-type LeadAction = {
-  label: string;
-  help: string;
-  icon: typeof Sparkles;
-  modal?: "reply-draft" | "reply-log" | "import";
-  variant?: "primary" | "secondary" | "danger" | "quiet";
-  run: (id: number) => Promise<unknown>;
-};
-
-const terminalStatuses = new Set(["won", "lost", "archived", "do_not_contact"]);
-const contactedStatuses = new Set([
-  "contacted",
-  "replied",
-  "follow_up_needed",
-  "proposal_sent"
-]);
-const websiteReadyStatuses = new Set(["draft_ready", "externally_imported", "email_drafted"]);
-
-function readableStatus(status: string) {
-  return status.replaceAll("_", " ");
-}
-
-function buildPrimaryActions(status: string, blocked: boolean): LeadAction[] {
-  if (blocked || terminalStatuses.has(status)) return [];
-
-  if (status === "discovered") {
-    return [
-      {
-        label: "Enrich",
-        help: "Collect website, contact, and source context.",
-        icon: Sparkles,
-        variant: "primary",
-        run: api.enrich
-      }
-    ];
-  }
-
-  if (status === "enriched" || status === "qualified") {
-    return [
-      {
-        label: "Generate website",
-        help: "Create BUILD_BRIEF.md and workspace.",
-        icon: Download,
-        variant: "primary",
-        run: api.generateWebsite
-      },
-      {
-        label: "Import website",
-        help: "Attach a site path, URL, or zip.",
-        icon: Upload,
-        modal: "import",
-        run: api.importWebsite
-      }
-    ];
-  }
-
-  if (websiteReadyStatuses.has(status)) {
-    return [
-      {
-        label: "Draft first email",
-        help: "Draft only. Nothing is sent.",
-        icon: MailPlus,
-        variant: "primary",
-        run: api.draftOutreach
-      },
-      ...(status === "email_drafted"
-        ? [
-      {
-        label: "I sent email",
-              help: "Record your manual send.",
-              icon: MailCheck,
-              run: api.markEmailSent
-            }
-          ]
-        : [])
-    ];
-  }
-
-  if (contactedStatuses.has(status)) {
-    return [
-      {
-        label: "Paste answer + draft reply",
-        help: "Save reply and draft response.",
-        icon: MessageSquareReply,
-        modal: "reply-draft",
-        variant: "primary",
-        run: api.receivedAnswer
-      },
-      {
-        label: "Follow up later",
-        help: "Set a manual reminder.",
-        icon: CalendarClock,
-        run: api.followUp
-      }
-    ];
-  }
-
-  return [];
-}
-
-function buildSecondaryActions(status: string, blocked: boolean): LeadAction[] {
-  if (blocked || terminalStatuses.has(status)) return [];
-
-  if (status === "enriched" || status === "qualified") {
-    return [
-      {
-        label: "Enrich again",
-        help: "Refresh source context.",
-        icon: Sparkles,
-        run: api.enrich
-      },
-      {
-        label: "Follow up later",
-        help: "Set a manual reminder.",
-        icon: CalendarClock,
-        run: api.followUp
-      }
-    ];
-  }
-
-  if (status === "draft_ready" || status === "externally_imported") {
-    return [
-      {
-        label: "Import website",
-        help: "Attach updated output.",
-        icon: Upload,
-        modal: "import",
-        run: api.importWebsite
-      },
-      {
-        label: "Follow up later",
-        help: "Set a manual reminder.",
-        icon: CalendarClock,
-        run: api.followUp
-      }
-    ];
-  }
-
-  if (status === "email_drafted") {
-    return [
-      {
-        label: "Follow up later",
-        help: "Set a manual reminder.",
-        icon: CalendarClock,
-        run: api.followUp
-      }
-    ];
-  }
-
-  if (contactedStatuses.has(status)) {
-    return [
-      {
-        label: "I received answer",
-        help: "Log reply without draft.",
-        icon: MessageSquareReply,
-        modal: "reply-log",
-        run: api.receivedAnswer
-      }
-    ];
-  }
-
-  return [];
-}
-
-function nextStepCopy(status: string, blocked: boolean) {
-  if (blocked) return "Outreach blocked.";
-  if (status === "discovered") return "Enrich first.";
-  if (status === "enriched" || status === "qualified") return "Generate or import a website before outreach.";
-  if (status === "draft_ready" || status === "externally_imported") return "Draft the first email when ready.";
-  if (status === "email_drafted") return "Send manually, then mark sent.";
-  if (status === "contacted") return "Paste replies or set follow-up.";
-  if (status === "replied" || status === "follow_up_needed" || status === "proposal_sent") {
-    return "Continue or close the thread.";
-  }
-  if (status === "won" || status === "lost" || status === "archived") return "Closed.";
-  return "Choose the next available step for this lead.";
-}
-
-function isJobResult(data: unknown): data is JobResult {
-  return Boolean(
-    data &&
-      typeof data === "object" &&
-      "status" in data &&
-      "type" in data &&
-      "result_json" in data
-  );
-}
+import { Modal } from "./Modal";
 
 export function LeadActions({ business }: { business: Business }) {
   const queryClient = useQueryClient();
@@ -219,45 +28,7 @@ export function LeadActions({ business }: { business: Business }) {
     status === "do_not_contact" || Boolean(business.lead_profile?.do_not_contact_reason);
   const primaryActions = useMemo(() => buildPrimaryActions(status, blocked), [blocked, status]);
   const secondaryActions = useMemo(() => buildSecondaryActions(status, blocked), [blocked, status]);
-  const closeActions: LeadAction[] = [
-    ...(contactedStatuses.has(status)
-      ? [
-          {
-            label: "Won",
-            help: "Mark converted.",
-            icon: Trophy,
-            run: (id: number) => api.status(id, "won")
-          },
-          {
-            label: "Lost",
-            help: "Mark not converted.",
-            icon: XCircle,
-            run: (id: number) => api.status(id, "lost")
-          }
-        ]
-      : []),
-    ...(status !== "archived" && status !== "won"
-      ? [
-          {
-            label: "Archive",
-            help: "Remove from cockpit.",
-            icon: Archive,
-            run: (id: number) => api.status(id, "archived")
-          }
-        ]
-      : []),
-    ...(!blocked && status !== "won" && status !== "lost" && status !== "archived"
-      ? [
-          {
-            label: "Do not contact",
-            help: "Block outreach suggestions.",
-            icon: Ban,
-            variant: "danger" as const,
-            run: api.doNotContact
-          }
-        ]
-      : [])
-  ];
+  const closeActions = useMemo(() => buildCloseActions(status, blocked), [blocked, status]);
 
   const mutation = useMutation({
     mutationFn: async ({ run }: { action: LeadAction; run: () => Promise<unknown> }) => {
@@ -408,19 +179,14 @@ export function LeadActions({ business }: { business: Business }) {
       ) : null}
 
       {replyModal ? (
-        <div
-          className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]"
-          role="group"
-          aria-label={replyModal === "reply-draft" ? "Paste answer and draft reply" : "Log received answer"}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setReplyModal(null);
-          }}
+        <Modal
+          title={replyModal === "reply-draft" ? "Paste answer and draft reply" : "Log received answer"}
+          onClose={() => setReplyModal(null)}
         >
           <p className="text-sm font-black text-ink">
             {replyModal === "reply-draft" ? "Paste answer + draft reply" : "I received answer"}
           </p>
           <textarea
-            autoFocus
             aria-label="Client answer text"
             className="mt-2 min-h-28 w-full resize-y rounded-md border border-ink/15 p-3 text-sm outline-none focus:border-moss focus:ring-4 focus:ring-moss/12"
             onChange={(event) => setReplyText(event.target.value)}
@@ -435,24 +201,16 @@ export function LeadActions({ business }: { business: Business }) {
               Cancel
             </Button>
           </div>
-        </div>
+        </Modal>
       ) : null}
 
       {importModal ? (
-        <div
-          className="rounded-lg border border-ink/10 bg-white p-4 shadow-[0_14px_45px_rgb(24_32_31/0.08)]"
-          role="group"
-          aria-label="Import website"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setImportModal(false);
-          }}
-        >
+        <Modal title="Import website" onClose={() => setImportModal(false)}>
           <p className="text-sm font-black text-ink">Import website</p>
           <p className="mt-1 text-xs text-ink/60">
             Paste a local `site/` folder, zip path, or preview URL.
           </p>
           <input
-            autoFocus
             aria-label="Website path or URL"
             className="mt-2 min-h-11 w-full rounded-md border border-ink/15 px-3 text-sm outline-none focus:border-moss focus:ring-4 focus:ring-moss/12"
             onChange={(event) => setImportPath(event.target.value)}
@@ -467,7 +225,7 @@ export function LeadActions({ business }: { business: Business }) {
               Cancel
             </Button>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </section>
   );

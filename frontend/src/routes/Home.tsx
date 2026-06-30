@@ -12,15 +12,10 @@ import { LeadTable } from "../components/LeadTable";
 import { LeadTabs } from "../components/LeadTabs";
 import { MapPanel } from "../components/MapPanel";
 import { SearchControls } from "../components/SearchControls";
+import { LeadQueueSkeleton } from "../components/Skeleton";
 import { api } from "../lib/api";
 import { defaultExcludedActivities } from "../lib/activityOptions";
-import {
-  archiveStatuses,
-  type AttributeFilter,
-  type LeadView,
-  matchesLeadFilters,
-  workflowStatuses
-} from "../lib/leadFilters";
+import { type AttributeFilter, deriveLeadBuckets, type LeadView } from "../lib/leadFilters";
 import type { SearchRun } from "../lib/types";
 
 const searchSchema = z.object({
@@ -105,59 +100,26 @@ export function Home() {
     () => (currentSearchIds ? new Set(currentSearchIds) : null),
     [currentSearchIds]
   );
-  const trackedBusinesses = currentSearchIdSet
-    ? businesses.filter((business) => currentSearchIdSet.has(business.id))
-    : businesses;
-  const discoveredBusinesses = businesses.filter(
-    (business) => (business.lead_profile?.status ?? "discovered") === "discovered"
+  const buckets = useMemo(
+    () =>
+      deriveLeadBuckets(
+        businesses,
+        currentSearchIdSet,
+        leadView,
+        leadTextFilter,
+        leadActivityFilters,
+        leadAttributeFilter
+      ),
+    [businesses, currentSearchIdSet, leadView, leadTextFilter, leadActivityFilters, leadAttributeFilter]
   );
-  const workflowBusinesses = businesses.filter((business) =>
-    workflowStatuses.includes(business.lead_profile?.status ?? "discovered")
-  );
-  const archivedBusinesses = businesses.filter((business) =>
-    archiveStatuses.includes(business.lead_profile?.status ?? "discovered")
-  );
-  const filteredDiscoveredBusinesses = discoveredBusinesses.filter((business) =>
-    matchesLeadFilters(business, leadTextFilter, leadActivityFilters, leadAttributeFilter)
-  );
-  const filteredWorkflowBusinesses = workflowBusinesses.filter((business) =>
-    matchesLeadFilters(business, leadTextFilter, leadActivityFilters, leadAttributeFilter)
-  );
-  const filteredArchivedBusinesses = archivedBusinesses.filter((business) =>
-    matchesLeadFilters(business, leadTextFilter, leadActivityFilters, leadAttributeFilter)
-  );
-  const newBusinesses = trackedBusinesses.filter(
-    (business) => !archiveStatuses.includes(business.lead_profile?.status ?? "discovered")
-  );
-  const visibleBusinesses =
-    leadView === "new"
-      ? newBusinesses
-      : leadView === "discovered"
-        ? filteredDiscoveredBusinesses
-        : leadView === "active"
-          ? filteredWorkflowBusinesses
-          : filteredArchivedBusinesses;
-  const activeBacklogCount =
-    leadView === "discovered"
-      ? discoveredBusinesses.length
-      : leadView === "active"
-        ? workflowBusinesses.length
-        : archivedBusinesses.length;
-  const readyCount = businesses.filter((business) =>
-    ["draft_ready", "externally_imported", "email_drafted"].includes(
-      business.lead_profile?.status ?? "discovered"
-    )
-  ).length;
-  const openTalksCount = businesses.filter((business) =>
-    ["contacted", "replied", "follow_up_needed", "proposal_sent"].includes(
-      business.lead_profile?.status ?? "discovered"
-    )
-  ).length;
+  const { visible: visibleBusinesses, activeBacklogCount, readyCount, openTalksCount } = buckets;
+  const workflowBusinesses = buckets.workflow;
+  const newBusinesses = buckets.newBusinesses;
   const leadTabs = [
-    { id: "new", label: "New", count: newBusinesses.length },
-    { id: "discovered", label: "Backlog", count: discoveredBusinesses.length },
-    { id: "active", label: "Active", count: workflowBusinesses.length },
-    { id: "archive", label: "Archive", count: archivedBusinesses.length }
+    { id: "new", label: "New", count: buckets.counts.new },
+    { id: "discovered", label: "Backlog", count: buckets.counts.discovered },
+    { id: "active", label: "Active", count: buckets.counts.active },
+    { id: "archive", label: "Archive", count: buckets.counts.archive }
   ] as const;
   const selected = useMemo(
     () => visibleBusinesses.find((business) => business.id === selectedId) ?? null,
@@ -290,12 +252,16 @@ export function Home() {
                 <h2 className="text-sm font-semibold text-ink">Lead queue</h2>
                 <span className="text-xs text-ink/50">Click a row to work it</span>
               </div>
-              <LeadTable
-                businesses={visibleBusinesses}
-                emptyMode={leadView}
-                selectedId={selected?.id ?? null}
-                onSelect={setSelectedId}
-              />
+              {businessesQuery.isLoading ? (
+                <LeadQueueSkeleton />
+              ) : (
+                <LeadTable
+                  businesses={visibleBusinesses}
+                  emptyMode={leadView}
+                  selectedId={selected?.id ?? null}
+                  onSelect={setSelectedId}
+                />
+              )}
             </div>
           </div>
         </section>
